@@ -1,6 +1,12 @@
 [package]
-name = "FourInARust"
+name = "four_in_a_rust"
 version = "0.1.0"
-authors = ["Arthur Carcano <arthur.carcano@ens.fr>"]
+authors = ["NougatRillettes <nougat.rillettes@gmail.com"]
+
+[lib]
+name = "4_in_a_rust"
+path = "src/lib.rs"
+doc = false
 
 [dependencies]
+ncurses = "*"
