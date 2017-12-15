@@ -1,4 +1,5 @@
 use std::fmt;
+use std::char;
 use std::ops::{Index};
 
 #[derive(Eq, PartialEq, Copy, Clone, Debug)]
@@ -68,8 +69,15 @@ impl Board {
         self.colslen[coli] += 1;
     }
 
+    //getters
     pub fn colslen(&self) -> &Vec<usize> {
         &self.colslen
+    }
+    pub fn cols(&self) -> usize {
+        self.cols
+    }
+    pub fn lines(&self) -> usize {
+        self.lines
     }
 }
 
@@ -80,8 +88,17 @@ impl Index<usize> for Board {
 
 impl fmt::Display for Board {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        // 2n+1 for edges ; n + 1 for \n
-        let mut res = String::with_capacity((2*self.lines+1)*(2*self.cols+1+1));
+        // 2n+1 for edges ; n + 1 for \n or numbers
+        let mut res = String::with_capacity((2*self.lines+1+1)*(2*self.cols+1+1));
+        if self.cols <= 35 {
+
+            res.push(' ');
+            for i in 1..self.cols+1 {
+                res.push(char::from_digit(i as u32,(self.cols+1) as u32).unwrap());
+                res.push(' ');
+            }
+            res.push('\n');
+        }
         for _ in 0..2*self.cols + 1{
             res.push('-');
         }
@@ -110,7 +127,8 @@ mod tests {
     fn generaltest() {
         //different cols and lines to be a bit less easy to pass
         let strboard =
-        "-------\n\
+        " 1 2 3 \n\
+         -------\n\
          |X| | |\n\
          -------\n\
          |O|X| |\n\
