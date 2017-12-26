@@ -21,7 +21,10 @@ fn main() {
                         println!("This column is full, isn't it ?");
                         continue;
                     }
-                    b.add_to_col(n-1,SqrState::Red)
+                    b.add_to_col(n-1,SqrState::Red);
+                    if b.win_at(n-1,b.colslen()[n-1] - 1) {
+                        println!("You won !!!!");
+                    }
                 }
                 else {
                     println!("Can't play that far mate.");
@@ -31,5 +34,8 @@ fn main() {
         };
         let aimove = ai::make_a_move(&b);
         b.add_to_col(aimove,SqrState::Yellow);
+        if b.win_at(aimove,b.colslen()[aimove] - 1) {
+            println!("You lost.");
+        }
     }
 }
