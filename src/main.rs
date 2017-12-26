@@ -1,17 +1,18 @@
 mod board;
+mod ai;
 use board::*;
 use std::io::{self,Write};
 
 fn main() {
-    let mut b = Board::new(3,2);
+    let mut b = Board::new(7,8);
     loop {
         print!("{}",b);
-        print!("Where do you want to play ? ");
+    //    print!("{:?}",b);
+        print!("Where do you want to play (you play {}) ? ",SqrState::Red);
         io::stdout().flush().unwrap();
         let mut input = String::new();
         io::stdin().read_line(&mut input)
             .expect("Failed to read line");
-        println!("{}",input);
         match input.trim().parse::<usize>() {
             Err(_) => {println!("Parse error :("); continue;},
             Ok(n) => {
@@ -28,5 +29,7 @@ fn main() {
                 }
             },
         };
+        let aimove = ai::make_a_move(&b);
+        b.add_to_col(aimove,SqrState::Yellow);
     }
 }
