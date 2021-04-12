@@ -1,41 +1,40 @@
-mod board;
 mod ai;
+mod board;
 use board::*;
-use std::io::{self,Write};
+use std::io::{self, Write};
 
 fn main() {
-    let mut b = Board::new(7,8);
+    let mut b = Board::<7, 8>::new();
     loop {
-        print!("{}",b);
-    //    print!("{:?}",b);
-        print!("Where do you want to play (you play {}) ? ",SqrState::Red);
+        print!("{}", b);
+        //    print!("{:?}",b);
+        print!(
+            "Where do you want to play (you play {}) ? ",
+            NonEmptySqrState::Red
+        );
         io::stdout().flush().unwrap();
         let mut input = String::new();
-        io::stdin().read_line(&mut input)
+        io::stdin()
+            .read_line(&mut input)
             .expect("Failed to read line");
         match input.trim().parse::<usize>() {
-            Err(_) => {println!("Parse error :("); continue;},
+            Err(_) => {
+                println!("Parse error :(");
+                continue;
+            }
             Ok(n) => {
-                if 1 <= n && n <= b.cols() {
-                    if b.col_is_full(n-1) {
-                        println!("This column is full, isn't it ?");
-                        continue;
-                    }
-                    b.add_to_col(n-1,SqrState::Red);
-                    if b.win_at(n-1,b.colslen()[n-1] - 1) {
-                        println!("You won !!!!");
-                    }
+                if b.add_and_check(n-1, NonEmptySqrState::Red) {
+                    print!("{}", b);
+                    println!("You won !!!!");
+                    return;
                 }
-                else {
-                    println!("Can't play that far mate.");
-                    continue;
-                }
-            },
+            }
         };
         let aimove = ai::make_a_move(&b);
-        b.add_to_col(aimove,SqrState::Yellow);
-        if b.win_at(aimove,b.colslen()[aimove] - 1) {
+        if b.add_and_check(aimove, NonEmptySqrState::Yellow) {
+            print!("{}", b);
             println!("You lost.");
+            return;
         }
     }
 }

@@ -1,11 +1,10 @@
-use board::*;
+use crate::board::*;
 
-pub fn make_a_move(b : &Board) -> usize {
-    let lmax = b.lines();
-    let mut doables = b.colslen()
+pub fn make_a_move<const COLS: usize, const ROWS: usize>(b : &Board<COLS, ROWS>) -> usize {
+    b.columns()
             .iter()
             .enumerate()
-            .filter(|&(_,l)| *l < lmax)
-            .map(|(i,_)| i);
-    doables.next().unwrap()
+            .find(|&(_,col)| !col.is_full())
+            .map(|(i,_)| i)
+            .unwrap()
 }
