@@ -1,8 +1,9 @@
 use array_init::array_init;
+use bv::BitVec;
 use std::char;
 use std::fmt;
 
-#[derive(Eq, PartialEq, Copy, Clone, Debug)]
+#[derive(Eq, PartialEq, Copy, Clone, Debug, Hash)]
 pub enum NonEmptySqrState {
     Red,
     Yellow,
@@ -23,7 +24,7 @@ impl std::fmt::Display for NonEmptySqrState {
     }
 }
 
-#[derive(Eq, PartialEq, Copy, Clone, Debug)]
+#[derive(Eq, PartialEq, Copy, Clone, Debug, Hash)]
 pub enum SqrState {
     Empty,
     NonEmpty(NonEmptySqrState),
@@ -55,13 +56,29 @@ impl fmt::Display for SqrState {
     }
 }
 
+#[derive(Debug)]
+enum ColumnError {
+    ColumnFull,
+}
+
+impl std::fmt::Display for ColumnError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_fmt(match self {
+            ColumnError::ColumnFull => format_args!("Column is already full."),
+        })
+    }
+}
+
+impl std::error::Error for ColumnError {}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Column<const SIZE: usize> {
     inner: [SqrState; SIZE],
-    len: usize,
+    len: u8,
 }
 
 impl<const SIZE: usize> Column<SIZE> {
-    pub fn new() -> Self {
+    fn new() -> Self {
         Self {
             inner: [SqrState::Empty; SIZE],
             len: 0,
@@ -69,26 +86,83 @@ impl<const SIZE: usize> Column<SIZE> {
     }
 
     pub fn is_full(&self) -> bool {
-        self.len == SIZE
+        self.len == SIZE as u8
     }
 
-    pub fn try_push(&mut self, x: NonEmptySqrState) -> Result<usize, NonEmptySqrState> {
-        let ptr = self.inner.get_mut(self.len).ok_or(x)?;
-        *ptr = SqrState::NonEmpty(x);
-        let prev_len = self.len;
-        self.len += 1;
-        Ok(prev_len)
+    pub fn len(&self) -> u8 {
+        self.len
     }
 
-    pub fn get(&self, i: usize) -> Option<SqrState> {
+    fn try_push(&mut self, x: NonEmptySqrState) -> Result<usize, ColumnError> {
+        let prev_len = self.len as usize;
+        if prev_len == SIZE {
+            Err(ColumnError::ColumnFull)
+        } else {
+            self.inner[prev_len] = SqrState::NonEmpty(x);
+            self.len += 1;
+            Ok(prev_len)
+        }
+    }
+
+    fn get(&self, i: usize) -> Option<SqrState> {
         self.inner.get(i).map(|&x| x)
     }
 
-    pub fn get_mut(&mut self, i: usize) -> Option<&mut SqrState> {
+    fn get_mut(&mut self, i: usize) -> Option<&mut SqrState> {
         self.inner.get_mut(i)
     }
 }
 
+#[derive(Debug)]
+pub enum BoardError {
+    ColumnIndexOutOfBounds {
+        required_index: usize,
+        column_size: usize,
+    },
+    RowIndexOutOfBounds {
+        required_index: usize,
+        row_size: usize,
+    },
+    ColumnFull {
+        column_index: usize,
+        tried_to_push: NonEmptySqrState,
+    },
+}
+
+impl std::fmt::Display for BoardError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        use BoardError::*;
+        match *self {
+            ColumnIndexOutOfBounds {
+                required_index,
+                column_size,
+            } => f.write_fmt(format_args!(
+                "Column index {} is ouf of bounds (col. size: {})",
+                required_index, column_size
+            )),
+            RowIndexOutOfBounds {
+                required_index,
+                row_size,
+            } => f.write_fmt(format_args!(
+                "Row index {} is ouf of bounds (col. size: {})",
+                required_index, row_size
+            )),
+            ColumnFull {
+                column_index,
+                tried_to_push,
+            } => f.write_fmt(format_args!(
+                "Column {} is already full, cannot add {} token.",
+                column_index, tried_to_push
+            )),
+        }
+    }
+}
+
+impl std::error::Error for BoardError {}
+
+pub type BoardResult<T> = Result<T, BoardError>;
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Board<const COLS: usize, const ROWS: usize> {
     states: [Column<ROWS>; COLS],
 }
@@ -107,22 +181,57 @@ impl<const COLS: usize, const ROWS: usize> Board<COLS, ROWS> {
         col.is_full()
     }
 
-    fn get_col(&self, coli: usize) -> Option<&Column<ROWS>> {
-        self.states.get(coli)
+    fn get_col(&self, coli: usize) -> BoardResult<&Column<ROWS>> {
+        self.states
+            .get(coli)
+            .ok_or(BoardError::ColumnIndexOutOfBounds {
+                required_index: coli,
+                column_size: ROWS,
+            })
     }
 
-    fn get_col_mut(&mut self, coli: usize) -> Option<&mut Column<ROWS>> {
-        self.states.get_mut(coli)
+    fn get_col_mut(&mut self, coli: usize) -> BoardResult<&mut Column<ROWS>> {
+        self.states
+            .get_mut(coli)
+            .ok_or(BoardError::ColumnIndexOutOfBounds {
+                required_index: coli,
+                column_size: ROWS,
+            })
     }
 
-    fn get_cell(&self, coli: usize, rowi: usize) -> Option<SqrState> {
+    fn get_cell(&self, coli: usize, rowi: usize) -> BoardResult<SqrState> {
         let col = self.get_col(coli)?;
-        col.get(rowi)
+        col.get(rowi).ok_or(BoardError::RowIndexOutOfBounds {
+            required_index: rowi,
+            row_size: COLS,
+        })
     }
 
-    fn get_cell_mut(&mut self, coli: usize, rowi: usize) -> Option<&mut SqrState> {
+    fn get_cell_mut(&mut self, coli: usize, rowi: usize) -> BoardResult<&mut SqrState> {
         let col = self.get_col_mut(coli)?;
-        col.get_mut(rowi)
+        col.get_mut(rowi).ok_or(BoardError::RowIndexOutOfBounds {
+            required_index: rowi,
+            row_size: COLS,
+        })
+    }
+
+    ///Add token to a column. Panics if:
+    ///  - `coli` is out of bounds
+    ///  - the column is full
+    /// Returns: height of added token
+    pub fn try_add_to_col(
+        &mut self,
+        coli: usize,
+        color: NonEmptySqrState,
+    ) -> Result<usize, BoardError> {
+        self.get_col_mut(coli)?
+            .try_push(color)
+            .map_err(|err| match err {
+                ColumnError::ColumnFull => BoardError::ColumnFull {
+                    column_index: coli,
+                    tried_to_push: color,
+                },
+            })
     }
 
     ///Add token to a column. Panics if:
@@ -130,46 +239,58 @@ impl<const COLS: usize, const ROWS: usize> Board<COLS, ROWS> {
     ///  - the column is full
     /// Returns: height of added token
     pub fn add_to_col(&mut self, coli: usize, color: NonEmptySqrState) -> usize {
-        self.get_col_mut(coli)
-            .expect("Column index is out of bounds")
-            .try_push(color)
-            .expect("Trying to add to an already full column")
+        self.try_add_to_col(coli, color).unwrap()
     }
 
     // Check if the given position is part of a winning line
-    pub fn win_at(&self, col_i: usize, row_i: usize) -> (SqrState, bool) {
-        let state = self.get_cell(col_i, row_i).unwrap();
+    pub fn try_win_at(&self, col_i: usize, row_i: usize) -> BoardResult<(SqrState, bool)> {
+        let state = self.get_cell(col_i, row_i)?;
         match state {
-            SqrState::Empty => return (state, false),
+            SqrState::Empty => return Ok((state, false)),
             SqrState::NonEmpty(_) => {
-                for (cdir, rdir) in &[(1, 0), (1, 1), (0, 1), (-1, -1)] {
+                for (cdir, rdir) in &[(1, 0), (1, 1), (0, 1), (-1, 1)] {
                     let mut count = 0;
                     for dir in &[1, -1] {
                         for i in 1.. {
                             let c: isize = (col_i as isize) + dir * i * cdir;
                             let r: isize = (row_i as isize) + dir * i * rdir;
                             match self.get_cell(c as usize, r as usize) {
-                                Some(other_state) if other_state == state => count += 1,
+                                Ok(other_state) if other_state == state => count += 1,
                                 _ => break,
                             }
                         }
                     }
                     if count >= 3 {
-                        return (state, true);
+                        return Ok((state, true));
                     }
                 }
-                return (state, false);
+                return Ok((state, false));
             }
         }
     }
 
-    pub fn add_and_check(&mut self, coli: usize, color: NonEmptySqrState) -> bool {
-        let rowi = self.add_to_col(coli, color);
-        self.win_at(coli, rowi).1
+    pub fn try_add_and_check(&mut self, coli: usize, color: NonEmptySqrState) -> BoardResult<bool> {
+        let rowi = self.try_add_to_col(coli, color)?;
+        self.try_win_at(coli, rowi).map(|x| x.1)
     }
 
     pub fn columns(&self) -> &[Column<ROWS>; COLS] {
         &self.states
+    }
+
+    pub fn to_packed_repr(&self) -> u128 {
+        let mut res = 0;
+        for col in self.columns() {
+            for &sqr in &col.inner {
+                res <<= 2;
+                res += match sqr {
+                    SqrState::Empty => 0b00,
+                    SqrState::NonEmpty(NonEmptySqrState::Yellow) => 0b10,
+                    SqrState::NonEmpty(NonEmptySqrState::Red) => 0b11,
+                };
+            }
+        }
+        res
     }
 }
 

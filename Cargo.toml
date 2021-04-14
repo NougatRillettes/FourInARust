@@ -6,4 +6,10 @@ edition="2018"
 
 [dependencies]
 # arrayvec = "0.5.2"
-array-init = {version = "2"}
+array-init = "2"
+anyhow = "1.0"
+ahash = "0.7"
+bv = "0.11.1"
+
+[profile.release]
+debug = true
