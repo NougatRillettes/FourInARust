@@ -283,7 +283,7 @@ impl<const COLS: usize, const ROWS: usize> Board<COLS, ROWS> {
         for col in self.columns() {
             for &sqr in &col.inner {
                 res <<= 2;
-                res += match sqr {
+                res |= match sqr {
                     SqrState::Empty => 0b00,
                     SqrState::NonEmpty(NonEmptySqrState::Yellow) => 0b10,
                     SqrState::NonEmpty(NonEmptySqrState::Red) => 0b11,

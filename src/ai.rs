@@ -1,8 +1,4 @@
-use std::{cmp::Ordering, collections::HashMap};
-
-use bv::BitVec;
-
-use crate::board::*;
+use crate::packedboard::*;
 
 const MAX_DEPTH: u8 = 10;
 
@@ -25,20 +21,19 @@ impl Score {
     }
 }
 
-fn first_empty_strat<const COLS: usize, const ROWS: usize>(
-    _b: &Board<COLS, ROWS>,
-) -> (usize, i8, Score) {
-    (0, 0, Score::unknow(0))
+fn first_empty_strat(
+    _b: &Board,
+) -> (ColIdx, i8, Score) {
+    (ColIdx::new(0).unwrap(), 0, Score::unknow(0))
 }
 
-fn turn<const COLS: usize, const ROWS: usize>(
-    b: &Board<COLS, ROWS>,
+fn turn(
+    b: &Board,
     depth: u8,
     ai_turn: bool,
-    cache: &mut Cache<COLS, ROWS>,
-) -> (usize, i8, Score) {
-    let packed_repr = b.to_packed_repr();
-    if let Some(&res) = cache.get(&packed_repr) {
+    cache: &mut Cache,
+) -> (ColIdx, i8, Score) {
+    if let Some(&res) = cache.get(&b) {
         return res;
     }
     let res = if depth == MAX_DEPTH {
@@ -53,7 +48,8 @@ fn turn<const COLS: usize, const ROWS: usize>(
         let mut recurse_positions = Vec::new();
         for candidate_col in 0..COLS {
             let mut b1 = (*b).clone();
-            match b1.try_add_and_check(candidate_col, color) {
+            let candidate_col = ColIdx::new(candidate_col).unwrap();
+            match b1.add_and_check(candidate_col, color) {
                 Ok(true) => return (candidate_col, 0, win_score),
                 Ok(false) => recurse_positions.push((candidate_col, b1)),
                 Err(BoardError::ColumnFull { .. }) => continue,
@@ -71,13 +67,13 @@ fn turn<const COLS: usize, const ROWS: usize>(
         .map(|(col, (_subcol, score_depth, score))| (col, score_depth+1, score))
         .unwrap()
     };
-    cache.insert(packed_repr, res);
+    cache.insert(b.clone(), res);
     res
 }
 
-type Cache<const COLS: usize, const ROWS: usize> = ahash::AHashMap<u128, (usize, i8, Score)>;
+type Cache = ahash::AHashMap<Board, (ColIdx, i8, Score)>;
 
-pub fn make_a_move<const COLS: usize, const ROWS: usize>(b: &Board<COLS, ROWS>) -> usize {
+pub fn make_a_move(b: &Board) -> ColIdx {
     let mut cache = Cache::new();
     let (res, reason_depth, reason) = turn(b, 0, true, &mut cache);
     println!("Cache capacity: {}", cache.capacity());
