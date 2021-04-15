@@ -1,3 +1,5 @@
+use std::collections::btree_map::IterMut;
+
 use crate::packedboard::*;
 
 const MAX_DEPTH: u8 = 10;
@@ -9,30 +11,30 @@ const AI_COLOR: NonEmptySqrState = NonEmptySqrState::Yellow;
 struct Score(i8);
 
 impl Score {
-    const AI_WIN: Self = Score(i8::MIN);
-
-    const PLAYER_WIN: Self = Score(i8::MAX);
-
-    fn unknow(score: i8) -> Self {
-        let res = Self(score);
-        assert!(Self::AI_WIN < res);
-        assert!(res < Self::PLAYER_WIN);
-        res
+    fn new(x: i8) -> Self {
+        Self(x)
     }
 }
 
-fn first_empty_strat(
-    _b: &Board,
-) -> (ColIdx, i8, Score) {
-    (ColIdx::new(0).unwrap(), 0, Score::unknow(0))
+impl std::fmt::Display for Score {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let inner = self.0;
+        if inner == 0 {
+            return f.write_fmt(format_args!("<unknown_issue>"));
+        }
+        f.write_fmt(format_args!(
+            "{} wins at turn n°{}",
+            if inner > 0 { "player" } else { "ai" },
+            22 - inner.abs()
+        ))
+    }
 }
 
-fn turn(
-    b: &Board,
-    depth: u8,
-    ai_turn: bool,
-    cache: &mut Cache,
-) -> (ColIdx, i8, Score) {
+fn first_empty_strat(_b: &Board) -> (ColIdx, Score) {
+    (ColIdx::new(0).unwrap(), Score::new(0))
+}
+
+fn turn(b: &Board, depth: u8, ai_turn: bool, cache: &mut Cache,) -> (ColIdx, Score) {
     if let Some(&res) = cache.get(&b) {
         return res;
     }
@@ -40,17 +42,18 @@ fn turn(
         first_empty_strat(b)
     } else {
         let color = if ai_turn { AI_COLOR } else { PLAYER_COLOR };
-        let win_score = if ai_turn {
-            Score::AI_WIN
-        } else {
-            Score::PLAYER_WIN
-        };
+        let win_score_multiply = if ai_turn { -1 } else { 1 };
         let mut recurse_positions = Vec::new();
-        for candidate_col in 0..COLS {
+        for &candidate_col in &ALL_COL_IDXS {
             let mut b1 = (*b).clone();
-            let candidate_col = ColIdx::new(candidate_col).unwrap();
             match b1.add_and_check(candidate_col, color) {
-                Ok(true) => return (candidate_col, 0, win_score),
+                Ok(true) => {
+                    let remaining_tokens_p1 = (22 - (b1.occupancy()+1)/2) as i8;
+                    return (
+                        candidate_col,
+                        Score::new(remaining_tokens_p1 * win_score_multiply),
+                    );
+                }
                 Ok(false) => recurse_positions.push((candidate_col, b1)),
                 Err(BoardError::ColumnFull { .. }) => continue,
                 Err(e) => unreachable!("{}", e),
@@ -58,26 +61,25 @@ fn turn(
         }
         let it = recurse_positions
             .into_iter()
-            .map(|(col, sub_b)| (col, turn(&sub_b, depth + 1, !ai_turn, cache)));
+            .map(|(col, sub_b)| (col, turn(&sub_b, depth + 1, !ai_turn, cache).1));
         if ai_turn {
-            it.min_by_key(|(_col, (_subcol, score_depth, score))| (*score, -*score_depth))
+            it.min_by_key(|(_col, score)| (*score))
         } else {
-            it.max_by_key(|(_col, (_subcol, score_depth, score))| (*score, *score_depth))
+            it.max_by_key(|(_col, score)| (*score))
         }
-        .map(|(col, (_subcol, score_depth, score))| (col, score_depth+1, score))
         .unwrap()
     };
     cache.insert(b.clone(), res);
     res
 }
 
-type Cache = ahash::AHashMap<Board, (ColIdx, i8, Score)>;
+type Cache = ahash::AHashMap<Board, (ColIdx, Score)>;
 
 pub fn make_a_move(b: &Board) -> ColIdx {
     let mut cache = Cache::new();
-    let (res, reason_depth, reason) = turn(b, 0, true, &mut cache);
+    let (res, reason) = turn(b, 0, true, &mut cache);
     println!("Cache capacity: {}", cache.capacity());
-    println!("Move chosen because: {:?} in {} moves", reason, reason_depth);
+    println!("Move chosen because: {}", reason,);
     res
 }
 

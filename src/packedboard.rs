@@ -54,9 +54,26 @@ impl fmt::Display for SqrState {
     }
 }
 
-pub const COLS: u8 = 7;
-pub const ROWS: u8 = 6;
-const GRID_SIZE: u8 = COLS * ROWS;
+pub const NCOL: u8 = 7;
+pub const NROW: u8 = 6;
+pub const ALL_COL_IDXS : [ColIdx; NCOL as usize] = [
+    Idx(0),
+    Idx(1),
+    Idx(2),
+    Idx(3),
+    Idx(4),
+    Idx(5),
+    Idx(6),
+];
+pub const ALL_ROW_IDXS : [ColIdx; NROW as usize] = [
+    Idx(0),
+    Idx(1),
+    Idx(2),
+    Idx(3),
+    Idx(4),
+    Idx(5),
+];
+const GRID_SIZE: u8 = NCOL * NROW;
 const LEN_SIZE: u8 = 3;
 
 #[derive(Debug)]
@@ -79,11 +96,11 @@ impl std::fmt::Display for BoardError {
         match *self {
             ColumnIndexOutOfBounds { required_index } => f.write_fmt(format_args!(
                 "Column index {} is ouf of bounds (there are {} columns)",
-                required_index, COLS
+                required_index, NCOL
             )),
             RowIndexOutOfBounds { required_index } => f.write_fmt(format_args!(
                 "Row index {} is ouf of bounds (there are {} rows)",
-                required_index, ROWS
+                required_index, NROW
             )),
             ColumnFull {
                 column_index,
@@ -102,8 +119,8 @@ pub type BoardResult<T> = Result<T, BoardError>;
 
 #[derive(Debug, Clone, Copy)]
 pub struct Idx<const MAX: u8>(u8);
-pub type ColIdx = Idx<COLS>;
-pub type RowIdx = Idx<ROWS>;
+pub type ColIdx = Idx<NCOL>;
+pub type RowIdx = Idx<NROW>;
 
 impl<const MAX: u8> std::fmt::Display for Idx<MAX> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -184,6 +201,10 @@ impl Board {
         get_bits(self.0, offset, LEN_SIZE) as u8
     }
 
+    pub fn occupancy(&self) -> u8 {
+        ALL_COL_IDXS.iter().map(|&c| self.col_len(c)).sum()
+    }
+
     pub fn col_first_free_row(&self, coli: ColIdx) -> Option<RowIdx> {
         RowIdx::new(self.col_len(coli))
     }
@@ -199,7 +220,7 @@ impl Board {
         if rowi >= col_len {
             SqrState::Empty
         } else {
-            SqrState::NonEmpty(match get_bits(self.0, rowi + coli * ROWS, 1_usize) {
+            SqrState::NonEmpty(match get_bits(self.0, rowi + coli * NROW, 1_usize) {
                 0 => NonEmptySqrState::Red,
                 1 => NonEmptySqrState::Yellow,
                 _ => unreachable!(),
@@ -226,7 +247,7 @@ impl Board {
                     LEN_SIZE,
                 );
                 if color == NonEmptySqrState::Yellow {
-                    set_bits(&mut self.0, 1, rowi.get() + coli * ROWS, 1_usize);
+                    set_bits(&mut self.0, 1, rowi.get() + coli * NROW, 1_usize);
                 }
                 Ok(rowi)
             }
@@ -275,30 +296,30 @@ impl fmt::Display for Board {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         // 2n+1 for edges ; n + 1 for \n or numbers
         let mut res =
-            String::with_capacity((2 * (ROWS as usize) + 1 + 1) * (2 * (COLS as usize) + 1 + 1));
+            String::with_capacity((2 * (NROW as usize) + 1 + 1) * (2 * (NCOL as usize) + 1 + 1));
         // What can be represented by 1-9 + A-Z to index the cols
-        if COLS <= 35 {
+        if NCOL <= 35 {
             res.push(' ');
-            for i in 1..COLS + 1 {
-                res.push(char::from_digit(i as u32, (COLS + 1) as u32).unwrap());
+            for i in 1..NCOL + 1 {
+                res.push(char::from_digit(i as u32, (NCOL + 1) as u32).unwrap());
                 res.push(' ');
             }
             res.push('\n');
         }
-        for _ in 0..(2 * COLS + 1) {
+        for _ in 0..(2 * NCOL + 1) {
             res.push('-');
         }
         res.push('\n');
-        for ri in (0..ROWS).rev() {
+        for ri in (0..NROW).rev() {
             res.push('|');
-            for ci in 0..COLS {
+            for ci in 0..NCOL {
                 let ci = ColIdx::new(ci).unwrap();
                 let ri = RowIdx::new(ri).unwrap();
                 res.push(self.get_cell(ci, ri).to_char());
                 res.push('|');
             }
             res.push('\n');
-            for _ in 0..2 * COLS + 1 {
+            for _ in 0..2 * NCOL + 1 {
                 res.push('-');
             }
             res.push('\n');
