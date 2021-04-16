@@ -1,4 +1,5 @@
 mod ai;
+use ai::AI;
 mod board;
 mod packedboard;
 use packedboard::*;
@@ -7,9 +8,11 @@ use std::io::{self, Write};
 
 fn main() -> anyhow::Result<()> {
     let mut b = Board::new();
-    let file = std::fs::File::open("input.txt")?;
-    let mut bufreader = std::io::BufReader::new(file);
-    // let bufreader = std::io::stdin();
+    // let file = std::fs::File::open("input.txt")?;
+    // let mut bufreader = std::io::BufReader::new(file);
+    let bufreader = std::io::stdin();
+    let mut ai = AI::new();
+    dbg!(std::mem::size_of::<Option<ColIdx>>());
     loop {
         print!("{}", b);
         //    print!("{:?}",b);
@@ -23,7 +26,7 @@ fn main() -> anyhow::Result<()> {
         match input.trim().parse::<u8>() {
             Err(_) => {
                 println!("Parse error :(");
-                anyhow::bail!("Parse error");
+                // anyhow::bail!("Parse error");
                 continue;
             }
             Ok(n) => {
@@ -35,7 +38,7 @@ fn main() -> anyhow::Result<()> {
                 }
             }
         };
-        let aimove = ai::make_a_move(&b);
+        let aimove = ai.make_a_move(&b);
         if b.add_and_check(aimove, NonEmptySqrState::Yellow)? {
             print!("{}", b);
             println!("You lost.");

@@ -1,6 +1,10 @@
+use std::cmp::{max, min};
+
+use ahash::AHashMap;
+
 use crate::packedboard::*;
 
-const MAX_DEPTH: u8 = 8;
+const MAX_DEPTH: u8 = 20;
 
 const PLAYER_COLOR: NonEmptySqrState = NonEmptySqrState::Red;
 const AI_COLOR: NonEmptySqrState = NonEmptySqrState::Yellow;
@@ -30,7 +34,7 @@ impl Score {
 
 impl Score {
     const MAX: Self = Self(i8::MAX);
-    const MIN: Self = Self(i8::MIN);
+    const MIN: Self = Self(i8::MIN + 1);
 }
 
 impl std::ops::Neg for Score {
@@ -55,72 +59,148 @@ impl std::fmt::Display for Score {
     }
 }
 
-fn first_empty_strat(_b: &Board) -> (ColIdx, Score) {
-    (ColIdx::new(0).unwrap(), Score::new(0))
-}
-
-fn turn(
+fn negamax(
     b: &Board,
-    depth: u8,
+    tree_depth: u8,
+    turn: u8,
     color: NonEmptySqrState,
     cache: &mut Cache,
     mut alpha: Score,
     mut beta: Score,
-) -> (ColIdx, Score) {
-    // if let Some(&res) = cache.get(&b) {
-    //     return res;
-    // }
-    let res = {
-        if depth == 0 {
-            first_empty_strat(b)
-        } else {
-            let mut recurse_positions = Vec::new();
-            for &candidate_col in &COLS_ORDER {
-                let mut b1 = (*b).clone();
-                match b1.add_and_check(candidate_col, color) {
-                    Ok(true) => {
-                        let remaining_tokens_p1 = (22 - (b1.occupancy() + 1) / 2) as i8;
-                        return (
-                            candidate_col,
-                            Score::new(remaining_tokens_p1),
-                        );
-                    }
-                    Ok(false) => recurse_positions.push((candidate_col, b1)),
-                    Err(BoardError::ColumnFull { .. }) => continue,
-                    Err(e) => unreachable!("{}", e),
+) -> (Option<ColIdx>, Score) {
+    let remaining_tokens_p1 = Score::new(22 - (((turn + 1) / 2) as i8));
+    if tree_depth == 0 || turn == 42 {
+        return (None, Score::new(0))
+    }
+    if let Some(&cachentry) = cache.result.get(&b) {
+        match cachentry {
+            CacheEntry::Exact(col, score) => return (Some(col),score),
+            CacheEntry::Unknown { turn: cache_turn } => {
+                // dbg!(turn,tree_depth,cache_turn);
+                if turn + tree_depth <= cache_turn {
+                    return (None, Score::new(0));
                 }
             }
-            let mut current_best_candidate = ALL_COL_IDXS[0];
-            let mut current_best = Score::MIN;
-            // println!("Starting: {} <= {}", alpha, beta);
-            for (candidate_col, pos) in recurse_positions.into_iter() {
-                let (_, neg_score) = turn(&pos, depth - 1, color.other(), cache, -beta, -alpha);
-                let score = -neg_score;
-                if score > current_best {
-                    current_best_candidate = candidate_col;
-                    current_best = score;
-                }
-                alpha = std::cmp::max(alpha, score);
-                if alpha >= beta {
-                    // println!("Pruning: {} >= {}", alpha, beta);
-                    break;
-                }
-            }
-            (current_best_candidate, current_best)
         }
+    }
+    if let Some(&lb) = cache.lower_bounds.get(&b) {
+                if lb >= beta {return (None, lb)};
+                alpha = max(alpha, lb);
+            }
+        
+    
+    let (res_col,res_score) = {
+        let mut recurse_positions = Vec::new();
+        for &candidate_col in &COLS_ORDER {
+            let mut b1 = (*b).clone();
+            match b1.add_and_check(candidate_col, color) {
+                Ok(true) => {
+                    return (Some(candidate_col), remaining_tokens_p1);
+                }
+                Ok(false) => recurse_positions.push((candidate_col, b1)),
+                Err(BoardError::ColumnFull { .. }) => continue,
+                Err(e) => unreachable!("{}", e),
+            }
+        }
+        let mut current_best_candidate = ALL_COL_IDXS[0];
+        let mut current_best = Score::MIN;
+        // println!("Starting: {} <= {}", alpha, beta);
+        for (candidate_col, pos) in recurse_positions.into_iter() {
+            // dbg!(alpha,beta);
+            let (_, neg_score) = negamax(
+                &pos,
+                tree_depth - 1,
+                turn + 1,
+                color.other(),
+                cache,
+                -beta,
+                -alpha,
+            );
+            let score = -neg_score;
+            if score > current_best {
+                current_best_candidate = candidate_col;
+                current_best = score;
+            }
+            alpha = max(alpha, score);
+            if alpha >= beta {
+                // println!("Pruning: {} >= {}", alpha, beta);
+                break;
+            }
+        }
+        (Some(current_best_candidate), current_best)
     };
-    // cache.insert(b.clone(), res);
-    res
+    if alpha < beta {
+        if res_score.get() == 0 {
+            cache.result.insert(b.clone(), CacheEntry::Unknown{turn});
+        } else {
+            cache.result.insert(b.clone(), CacheEntry::Exact(res_col.unwrap(), res_score));
+        }
+    }
+    else if res_score.get() != 0 {
+        cache.lower_bounds.entry(b.clone()).and_modify(|lb| *lb=min(*lb,res_score)).or_insert(res_score);
+    }
+    (res_col, res_score)
+}
+#[derive(Debug,Clone, Copy)]
+enum CacheEntry {
+    Exact(ColIdx,Score),
+    Unknown{turn: u8},
 }
 
-type Cache = ahash::AHashMap<Board, (ColIdx, Score)>;
+struct Cache {
+    result: ahash::AHashMap<Board, CacheEntry>,
+    lower_bounds: ahash::AHashMap<Board, Score>,
+}
 
-pub fn make_a_move(b: &Board) -> ColIdx {
-    let mut cache = Cache::new();
-    let (res, reason) = turn(b, MAX_DEPTH, AI_COLOR, &mut cache, Score::MIN, Score::MAX);
-    println!("Cache capacity: {}", cache.capacity());
-    println!("Move chosen because: {}", reason,);
-    res
+impl Cache {
+    fn new() -> Self {
+        Self {
+            result: AHashMap::with_capacity(100_000),
+            lower_bounds: AHashMap::with_capacity(100_000),
+        }
+    }
+}
+
+pub struct AI(Cache);
+
+impl AI {
+    pub fn new() -> Self {
+        AI(Cache::new())
+    }
+
+    pub fn make_a_move(&mut self, b: &Board) -> ColIdx {
+        let cache = &mut self.0;
+        // negamax(
+        //     b,
+        //     20,
+        //     b.occupancy() + 1,
+        //     AI_COLOR,
+        //     cache,
+        //     Score::MIN,
+        //     Score::MAX,
+        // );
+        // negamax(
+        //     b,
+        //     30,
+        //     b.occupancy() + 1,
+        //     AI_COLOR,
+        //     cache,
+        //     Score::MIN,
+        //     Score::MAX,
+        // );
+        let (res, reason) = negamax(
+            b,
+            MAX_DEPTH,
+            b.occupancy() + 1,
+            AI_COLOR,
+            cache,
+            Score::MIN,
+            Score::MAX,
+        );
+        println!("Cache capacities: {}, {}", cache.result.capacity(), cache.lower_bounds.capacity());
+        println!("Move chosen because: {}", reason,);
+        res.unwrap()
+    }
 }
 
 // pub fn make_a_move<const COLS: usize, const ROWS: usize>(b: &Board<COLS, ROWS>) -> usize {
