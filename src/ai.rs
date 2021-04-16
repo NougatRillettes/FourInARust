@@ -1,6 +1,6 @@
 use crate::packedboard::*;
 
-const MAX_DEPTH: u8 = 25;
+const MAX_DEPTH: u8 = 8;
 
 const PLAYER_COLOR: NonEmptySqrState = NonEmptySqrState::Red;
 const AI_COLOR: NonEmptySqrState = NonEmptySqrState::Yellow;
@@ -22,11 +22,23 @@ impl Score {
     fn new(x: i8) -> Self {
         Self(x)
     }
+
+    fn get(self) -> i8 {
+        self.0
+    }
 }
 
 impl Score {
     const MAX: Self = Self(i8::MAX);
     const MIN: Self = Self(i8::MIN);
+}
+
+impl std::ops::Neg for Score {
+    type Output = Self;
+
+    fn neg(self) -> Self::Output {
+        Self::new(-self.get())
+    }
 }
 
 impl std::fmt::Display for Score {
@@ -36,8 +48,8 @@ impl std::fmt::Display for Score {
             return f.write_fmt(format_args!("<unknown_issue>"));
         }
         f.write_fmt(format_args!(
-            "{} wins at turn n°{}",
-            if inner > 0 { "player" } else { "ai" },
+            "{} win at turn n°{}",
+            if inner > 0 { "I" } else { "you" },
             22 - inner.abs()
         ))
     }
@@ -50,20 +62,18 @@ fn first_empty_strat(_b: &Board) -> (ColIdx, Score) {
 fn turn(
     b: &Board,
     depth: u8,
-    ai_turn: bool,
+    color: NonEmptySqrState,
     cache: &mut Cache,
     mut alpha: Score,
     mut beta: Score,
 ) -> (ColIdx, Score) {
-    if let Some(&res) = cache.get(&b) {
-        return res;
-    }
+    // if let Some(&res) = cache.get(&b) {
+    //     return res;
+    // }
     let res = {
-        if depth == MAX_DEPTH {
+        if depth == 0 {
             first_empty_strat(b)
         } else {
-            let color = if ai_turn { AI_COLOR } else { PLAYER_COLOR };
-            let win_score_multiply = if ai_turn { -1 } else { 1 };
             let mut recurse_positions = Vec::new();
             for &candidate_col in &COLS_ORDER {
                 let mut b1 = (*b).clone();
@@ -72,7 +82,7 @@ fn turn(
                         let remaining_tokens_p1 = (22 - (b1.occupancy() + 1) / 2) as i8;
                         return (
                             candidate_col,
-                            Score::new(remaining_tokens_p1 * win_score_multiply),
+                            Score::new(remaining_tokens_p1),
                         );
                     }
                     Ok(false) => recurse_positions.push((candidate_col, b1)),
@@ -81,19 +91,16 @@ fn turn(
                 }
             }
             let mut current_best_candidate = ALL_COL_IDXS[0];
-            let mut current_best = if ai_turn { Score::MAX } else { Score::MIN };
+            let mut current_best = Score::MIN;
             // println!("Starting: {} <= {}", alpha, beta);
             for (candidate_col, pos) in recurse_positions.into_iter() {
-                let (_, score) = turn(&pos, depth + 1, !ai_turn, cache, alpha, beta);
-                if ai_turn && (score < current_best) {
+                let (_, neg_score) = turn(&pos, depth - 1, color.other(), cache, -beta, -alpha);
+                let score = -neg_score;
+                if score > current_best {
                     current_best_candidate = candidate_col;
                     current_best = score;
-                    beta = current_best;
-                } else if !ai_turn && (score > current_best) {
-                    current_best_candidate = candidate_col;
-                    current_best = score;
-                    alpha = current_best;
                 }
+                alpha = std::cmp::max(alpha, score);
                 if alpha >= beta {
                     // println!("Pruning: {} >= {}", alpha, beta);
                     break;
@@ -102,7 +109,7 @@ fn turn(
             (current_best_candidate, current_best)
         }
     };
-    cache.insert(b.clone(), res);
+    // cache.insert(b.clone(), res);
     res
 }
 
@@ -110,7 +117,7 @@ type Cache = ahash::AHashMap<Board, (ColIdx, Score)>;
 
 pub fn make_a_move(b: &Board) -> ColIdx {
     let mut cache = Cache::new();
-    let (res, reason) = turn(b, 0, true, &mut cache, Score::MIN, Score::MAX);
+    let (res, reason) = turn(b, MAX_DEPTH, AI_COLOR, &mut cache, Score::MIN, Score::MAX);
     println!("Cache capacity: {}", cache.capacity());
     println!("Move chosen because: {}", reason,);
     res

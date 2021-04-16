@@ -14,6 +14,13 @@ impl NonEmptySqrState {
             Self::Yellow => 'O',
         }
     }
+
+    pub fn other(self) -> Self {
+        match self {
+            NonEmptySqrState::Red => NonEmptySqrState::Yellow,
+            NonEmptySqrState::Yellow => NonEmptySqrState::Red,
+        }
+    }
 }
 
 impl std::fmt::Display for NonEmptySqrState {
